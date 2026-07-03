@@ -1,10 +1,42 @@
 import Link from "next/link";
 import AppShell from "@/components/AppShell";
+import { requireUser } from "@/lib/auth";
+import { readDb, type Project } from "@/lib/db";
 
-export default function Dashboard() {
+const fmt = (n: number) => "$" + n.toLocaleString("en-US");
+
+const STATUS_BADGE: Record<Project["status"], { cls: string; label: string }> = {
+  proposals: { cls: "badge-accent", label: "Reviewing proposals" },
+  "in-progress": { cls: "badge-primary", label: "In Progress" },
+  "in-qa": { cls: "badge-warning", label: "In QA" },
+  revision: { cls: "badge-warning", label: "Revision" },
+  completed: { cls: "badge-success", label: "Completed" },
+};
+
+export default async function Dashboard() {
+  const user = await requireUser();
+  const db = await readDb();
+  const projects = db.projects.filter((p) => p.clientId === user.id || user.role === "admin");
+
+  const active = projects.filter((p) => p.status !== "completed");
+  const lockedTotal = projects
+    .flatMap((p) => p.milestones)
+    .filter((m) => m.state !== "released")
+    .reduce((s, m) => s + m.amount, 0);
+  const releasedTotal = db.ledger
+    .filter((t) => t.type === "release")
+    .reduce((s, t) => s + Math.abs(t.amount), 0);
+  const needsApproval = projects.flatMap((p) =>
+    p.milestones.filter((m) => m.state === "in-qa").map((m) => ({ project: p, milestone: m })),
+  );
+  const inRevision = projects.flatMap((p) =>
+    p.milestones.filter((m) => m.state === "revision").map((m) => ({ project: p, milestone: m })),
+  );
+
   return (
     <AppShell
       active="dashboard"
+      user={user}
       topbar={
         <>
           <div className="search-bar flex1" style={{ maxWidth: 440, padding: "8px 16px" }}>
@@ -16,55 +48,50 @@ export default function Dashboard() {
     >
       <div className="row between">
         <div>
-          <h1 className="h-xl">Good morning, Andre 👋</h1>
+          <h1 className="h-xl">Good morning, {user.name.split(" ")[0]} 👋</h1>
           <p className="text-2">Here&apos;s what&apos;s happening across your projects.</p>
         </div>
         <span className="badge badge-success"><span className="dot pulse" /> All systems normal</span>
       </div>
 
       <div className="grid g4">
-        <div className="card stat"><span className="k">Active Projects</span><span className="v">4</span><span className="d up">▲ 1 this month</span></div>
-        <div className="card stat"><span className="k">In Escrow</span><span className="v">$27,500</span><span className="d text-3">across 4 projects</span></div>
-        <div className="card stat"><span className="k">Released This Month</span><span className="v">$9,200</span><span className="d up">▲ 18% vs May</span></div>
-        <div className="card stat"><span className="k">Avg. Milestone Approval</span><span className="v">1.8 days</span><span className="d up">▼ 0.4 days faster</span></div>
+        <div className="card stat"><span className="k">Active Projects</span><span className="v">{active.length}</span><span className="d text-3">{projects.length} total</span></div>
+        <div className="card stat"><span className="k">In Escrow</span><span className="v">{fmt(lockedTotal)}</span><span className="d text-3">across {active.length} projects</span></div>
+        <div className="card stat"><span className="k">Released All-Time</span><span className="v">{fmt(releasedTotal)}</span><span className="d up">▲ escrow verified</span></div>
+        <div className="card stat"><span className="k">Awaiting Your Approval</span><span className="v">{needsApproval.length}</span><span className="d text-3">milestones in QA</span></div>
       </div>
 
       <div className="grid" style={{ gridTemplateColumns: "1.6fr 1fr" }}>
         <div className="card pad col">
-          <div className="row between"><b className="h-md">Active projects</b><Link className="small" style={{ color: "var(--primary)" }} href="/project">View all →</Link></div>
+          <div className="row between"><b className="h-md">Active projects</b><Link className="small" style={{ color: "var(--primary)" }} href="/post-project">+ Post a project</Link></div>
           <div className="col">
-            <Link className="card hover pad row" href="/project" style={{ gap: 16 }}>
-              <span className="avatar a2">FD</span>
-              <div className="flex1">
-                <div className="row between"><b>Fintech Dashboard</b><span className="badge badge-warning">In QA</span></div>
-                <div className="small text-3">Maya Kim · Milestone 2 of 3 · due Jul 14</div>
-                <div className="progress mt-1"><i style={{ width: "66%" }} /></div>
+            {projects.length === 0 && (
+              <div className="card pad center col" style={{ gap: 10, padding: 36 }}>
+                <span style={{ fontSize: "1.8rem" }}>📁</span>
+                <b>No projects yet</b>
+                <p className="small text-3">Post your first project and fund escrow to get matched with developers.</p>
+                <Link className="btn btn-primary btn-sm" href="/post-project">Post a project</Link>
               </div>
-            </Link>
-            <Link className="card hover pad row" href="/project" style={{ gap: 16 }}>
-              <span className="avatar a4">FA</span>
-              <div className="flex1">
-                <div className="row between"><b>Fitness App (iOS/Android)</b><span className="badge badge-primary">In Progress</span></div>
-                <div className="small text-3">Diego Alvarez · Milestone 1 of 4 · due Jul 22</div>
-                <div className="progress mt-1"><i style={{ width: "25%" }} /></div>
-              </div>
-            </Link>
-            <Link className="card hover pad row" href="/project" style={{ gap: 16 }}>
-              <span className="avatar a3">AI</span>
-              <div className="flex1">
-                <div className="row between"><b>Support AI Agent</b><span className="badge badge-accent">Reviewing proposals</span></div>
-                <div className="small text-3">31 proposals · budget $6,000–$9,500</div>
-                <div className="progress mt-1"><i style={{ width: "8%" }} /></div>
-              </div>
-            </Link>
-            <Link className="card hover pad row" href="/project" style={{ gap: 16 }}>
-              <span className="avatar a5">MW</span>
-              <div className="flex1">
-                <div className="row between"><b>Marketing Website</b><span className="badge badge-success">Completed</span></div>
-                <div className="small text-3">Delivered Jun 20 · ★ 5.0 review left</div>
-                <div className="progress success mt-1"><i style={{ width: "100%" }} /></div>
-              </div>
-            </Link>
+            )}
+            {projects.map((p) => {
+              const total = p.milestones.reduce((s, m) => s + m.amount, 0);
+              const released = p.milestones.filter((m) => m.state === "released").reduce((s, m) => s + m.amount, 0);
+              const pct = total ? Math.round((released / total) * 100) : 0;
+              const badge = STATUS_BADGE[p.status];
+              const releasedCount = p.milestones.filter((m) => m.state === "released").length;
+              return (
+                <Link key={p.id} className="card hover pad row" href={`/project?id=${p.id}`} style={{ gap: 16 }}>
+                  <span className={`avatar ${p.avatarClass}`}>{p.developerInitials}</span>
+                  <div className="flex1">
+                    <div className="row between"><b>{p.title}</b><span className={`badge ${badge.cls}`}>{badge.label}</span></div>
+                    <div className="small text-3">
+                      {p.developerName} · Milestone {Math.min(releasedCount + 1, p.milestones.length)} of {p.milestones.length} · due {p.dueDate}
+                    </div>
+                    <div className={`progress mt-1${p.status === "completed" ? " success" : ""}`}><i style={{ width: `${pct}%` }} /></div>
+                  </div>
+                </Link>
+              );
+            })}
           </div>
         </div>
 
@@ -72,31 +99,47 @@ export default function Dashboard() {
           <div className="card pad col" style={{ borderColor: "var(--warning)" }}>
             <b className="h-md">⚡ Needs your action</b>
             <div className="col gap-sm">
-              <div className="row between card pad" style={{ padding: "12px 14px" }}>
-                <div className="small"><b>Approve Milestone 2</b><div className="tiny text-3">Fintech Dashboard · QA passed ✓</div></div>
-                <Link className="btn btn-success btn-sm" href="/project">Review</Link>
-              </div>
-              <div className="row between card pad" style={{ padding: "12px 14px" }}>
-                <div className="small"><b>Choose a QA tester</b><div className="tiny text-3">Fitness App · 6 testers available</div></div>
-                <Link className="btn btn-secondary btn-sm" href="/browse">Assign</Link>
-              </div>
+              {needsApproval.length === 0 && inRevision.length === 0 && (
+                <p className="small text-3">Nothing waiting on you — all milestones are moving. 🎉</p>
+              )}
+              {needsApproval.map(({ project, milestone }) => (
+                <div key={project.id + milestone.id} className="row between card pad" style={{ padding: "12px 14px" }}>
+                  <div className="small"><b>Approve {milestone.title.split(" — ")[0]}</b><div className="tiny text-3">{project.title} · QA passed ✓</div></div>
+                  <Link className="btn btn-success btn-sm" href={`/project?id=${project.id}`}>Review</Link>
+                </div>
+              ))}
+              {inRevision.map(({ project, milestone }) => (
+                <div key={project.id + milestone.id} className="row between card pad" style={{ padding: "12px 14px" }}>
+                  <div className="small"><b>{milestone.title.split(" — ")[0]} in revision</b><div className="tiny text-3">{project.title} · developer notified</div></div>
+                  <Link className="btn btn-secondary btn-sm" href={`/project?id=${project.id}`}>Track</Link>
+                </div>
+              ))}
             </div>
           </div>
 
           <div className="card pad col">
             <div className="row between"><b className="h-md">Messages</b><Link className="small" style={{ color: "var(--primary)" }} href="/messages">Open inbox →</Link></div>
-            <Link className="row" href="/messages"><span className="avatar sm a2">MK</span><div className="flex1 small"><b>Maya Kim</b><div className="text-3" style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Pushed the charting module — ready for QA 🎉</div></div><span className="tiny text-3">2m</span></Link>
-            <Link className="row" href="/messages"><span className="avatar sm a3">RT</span><div className="flex1 small"><b>Rita Torres (QA)</b><div className="text-3" style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Found 2 minor bugs in the export flow, report attached</div></div><span className="tiny text-3">1h</span></Link>
-            <Link className="row" href="/messages"><span className="avatar sm a4">DA</span><div className="flex1 small"><b>Diego Alvarez</b><div className="text-3" style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Daily update: auth + onboarding screens done</div></div><span className="tiny text-3">3h</span></Link>
+            {db.messages.slice(-3).reverse().map((m) => (
+              <Link key={m.id} className="row" href="/messages">
+                <span className="avatar sm a2">{m.senderInitials}</span>
+                <div className="flex1 small">
+                  <b>{m.senderName}</b>
+                  <div className="text-3" style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.text}</div>
+                </div>
+              </Link>
+            ))}
           </div>
 
           <div className="card pad col" style={{ background: "var(--grad-brand)", border: 0, color: "#fff" }}>
             <div className="row between"><b>Wallet</b><Link className="tiny" style={{ color: "rgba(255,255,255,.8)" }} href="/wallet">Manage →</Link></div>
             <div>
               <div className="tiny" style={{ color: "rgba(255,255,255,.7)" }}>ESCROW BALANCE</div>
-              <div style={{ fontSize: "1.9rem", fontWeight: 800 }}>$27,500.00</div>
+              <div style={{ fontSize: "1.9rem", fontWeight: 800 }}>{fmt(lockedTotal)}</div>
             </div>
-            <div className="row small" style={{ color: "rgba(255,255,255,.85)" }}><span>🔒 Locked: $23,500</span><span>· Releasable: $4,000</span></div>
+            <div className="row small" style={{ color: "rgba(255,255,255,.85)" }}>
+              <span>🔒 Locked: {fmt(lockedTotal - needsApproval.reduce((s, n) => s + n.milestone.amount, 0))}</span>
+              <span>· Releasable: {fmt(needsApproval.reduce((s, n) => s + n.milestone.amount, 0))}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -104,13 +147,16 @@ export default function Dashboard() {
       <div className="card pad col">
         <b className="h-md">Recent activity</b>
         <table className="table">
-          <thead><tr><th>Event</th><th>Project</th><th>Amount</th><th>When</th><th>Status</th></tr></thead>
+          <thead><tr><th>Date</th><th>Event</th><th>Amount</th><th>Status</th></tr></thead>
           <tbody>
-            <tr><td>✅ QA report passed (34/34 checks)</td><td>Fintech Dashboard</td><td className="mono">—</td><td>12 min ago</td><td><span className="badge badge-success">Passed</span></td></tr>
-            <tr><td>🔒 Escrow funded — Milestone 1</td><td>Fitness App</td><td className="mono">$5,000.00</td><td>Yesterday</td><td><span className="badge badge-primary">Locked</span></td></tr>
-            <tr><td>💸 Payment released — Milestone 1</td><td>Fintech Dashboard</td><td className="mono">$4,000.00</td><td>Jun 26</td><td><span className="badge badge-success">Released</span></td></tr>
-            <tr><td>📝 New proposal from Amara Okafor</td><td>Support AI Agent</td><td className="mono">$8,200.00</td><td>Jun 25</td><td><span className="badge badge-neutral">Pending</span></td></tr>
-            <tr><td>⭐ You rated Maya Kim ★★★★★</td><td>Marketing Website</td><td className="mono">—</td><td>Jun 20</td><td><span className="badge badge-accent">Review</span></td></tr>
+            {db.ledger.slice(-6).reverse().map((t) => (
+              <tr key={t.id}>
+                <td className="mono">{t.date}</td>
+                <td>{t.description}</td>
+                <td className="mono">{t.amount < 0 ? "-" : "+"}{fmt(Math.abs(t.amount))}</td>
+                <td><span className={`badge ${t.status === "Locked" ? "badge-primary" : "badge-success"}`}>{t.status}</span></td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>

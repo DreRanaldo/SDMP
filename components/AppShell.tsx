@@ -1,5 +1,7 @@
 import Link from "next/link";
 import ThemeToggle from "./ThemeToggle";
+import { logout } from "@/app/actions";
+import type { SafeUser } from "@/lib/db";
 
 export type NavKey =
   | "dashboard"
@@ -34,11 +36,13 @@ export default function AppShell({
   active,
   topbar,
   children,
+  user,
   flush = false,
 }: {
   active: NavKey;
   topbar: React.ReactNode;
   children: React.ReactNode;
+  user?: SafeUser;
   /** Render children without the padded .content wrapper (full-bleed views like chat). */
   flush?: boolean;
 }) {
@@ -63,8 +67,15 @@ export default function AppShell({
         <SideLink href="/browse">🧪 Find Testers</SideLink>
         <SideLink href="/profile">⭐ Reviews</SideLink>
         <div style={{ flex: 1 }} />
-        <SideLink href="/admin">🛠️ Admin Panel</SideLink>
+        {user?.role === "admin" && <SideLink href="/admin">🛠️ Admin Panel</SideLink>}
         <SideLink href="/dashboard">⚙️ Settings</SideLink>
+        {user && (
+          <form action={logout}>
+            <button className="side-link" style={{ width: "100%" }} type="submit">
+              🚪 Log out
+            </button>
+          </form>
+        )}
       </aside>
 
       <div className="main">
@@ -74,8 +85,8 @@ export default function AppShell({
           <Link className="btn btn-primary btn-sm" href="/post-project">
             + New Project
           </Link>
-          <span className="avatar-wrap">
-            <span className="avatar a5 online">AG</span>
+          <span className="avatar-wrap" title={user ? `${user.name} (${user.email})` : undefined}>
+            <span className="avatar a5 online">{user?.initials ?? "??"}</span>
           </span>
         </div>
         {flush ? children : <div className="content">{children}</div>}

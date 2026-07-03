@@ -1,9 +1,14 @@
 import Link from "next/link";
 import ThemeToggle from "@/components/ThemeToggle";
+import { requireRole } from "@/lib/auth";
+import { readDb } from "@/lib/db";
 
 const sparkHeights = [34, 41, 38, 52, 47, 58, 55, 64, 61, 72, 69, 78, 83, 90];
 
-export default function Admin() {
+export default async function Admin() {
+  const user = await requireRole("admin");
+  const db = await readDb();
+  const audit = [...db.audit].slice(-5).reverse();
   return (
     <div className="app">
       <aside className="sidebar">
@@ -40,7 +45,7 @@ export default function Admin() {
           <select className="input" style={{ width: "auto", padding: "7px 12px" }} defaultValue="Last 30 days">
             <option>Last 30 days</option><option>Quarter</option><option>Year</option>
           </select>
-          <span className="avatar a3">AD</span>
+          <span className="avatar a3" title={user.email}>{user.initials}</span>
         </div>
 
         <div className="content">
@@ -128,11 +133,9 @@ export default function Admin() {
             </div>
             <div className="card pad col gap-sm">
               <b className="h-md">📋 Audit log (live)</b>
-              <div className="tiny mono text-2">14:02 admin.rt freeze escrow DSP-3041</div>
-              <div className="tiny mono text-2">13:58 system release $4,000 → maya.kim</div>
-              <div className="tiny mono text-2">13:51 admin.jd verify user jonas.weber</div>
-              <div className="tiny mono text-2">13:47 system flag payment pi_9f2… (velocity)</div>
-              <div className="tiny mono text-2">13:40 admin.rt ban user spam_4412 (ToS 4.2)</div>
+              {audit.map((e) => (
+                <div key={e.id} className="tiny mono text-2">{e.at} {e.text}</div>
+              ))}
             </div>
           </div>
         </div>

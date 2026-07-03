@@ -17,3 +17,6 @@ npm-debug.log*
 
 # typescript
 *.tsbuildinfo
+
+# local data store (JSON demo database)
+/.data/

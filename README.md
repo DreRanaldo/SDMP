@@ -34,7 +34,8 @@ npm start          # serves the production build on :3000
 npx vercel         # or connect the GitHub repo at vercel.com/new
 ```
 
-No environment variables are required for the demo build.
+Set `SDMP_SECRET` (any long random string) in production. Note: on serverless
+hosts the demo's JSON store is ephemeral — fine for previews; see Architecture.
 
 **Netlify:** connect the repo, build command `npm run build` (the Next.js runtime is auto-detected).
 
@@ -74,23 +75,64 @@ The full product/design specification (user types, flows, escrow state machine,
 feature catalog) lives in the companion design package:
 `DreRanaldo/Hellodre` → `sdmp-design/SPEC.md`.
 
-## 🏗️ Architecture & next steps
+## 🔐 Auth & accounts
 
-This is the **launchable demo build**: every screen and interaction runs on seeded
-data from `lib/data.ts`, with client-side state for the interactive flows
-(milestone approval, chat, project wizard). To take it to production:
+Real session auth is built in — no external identity provider required:
 
-1. **Database & API** — replace `lib/data.ts` with a data layer (PostgreSQL +
-   Prisma/Drizzle) exposed through route handlers or server actions.
-2. **Auth** — swap the demo login for Auth.js/Clerk with the same OAuth
-   providers plus TOTP 2FA; gate app routes with middleware.
-3. **Payments/escrow** — Stripe Connect: deposits into a platform balance
-   (double-entry ledger), transfers on milestone approval, webhooks driving the
-   escrow state machine (Funded → In QA → Client Review → Released / Dispute).
+- **Passwords** hashed with scrypt (Node `crypto`), verified in constant time
+- **Sessions** are HMAC-signed, HTTP-only, `SameSite=Lax` cookies (7-day TTL)
+- **Middleware** bounces unauthenticated requests off all app routes
+- **Roles** (`client` / `developer` / `tester` / `admin`) — the admin panel is
+  role-gated server-side via `requireRole("admin")`
+- **Register** creates a working client account with an empty dashboard
+
+Demo accounts (seeded on first run):
+
+| Account | Email | Password |
+|---|---|---|
+| Client | `andre@demo.sdmp` | `demo1234` |
+| Admin | `admin@demo.sdmp` | `admin1234` |
+
+## 🏗️ Architecture
+
+```
+app/actions.ts      server actions — the write API (auth, projects, escrow, chat)
+lib/auth.ts         scrypt hashing + signed session cookies + route guards
+lib/db.ts           data layer: file-backed JSON store behind a repository API
+middleware.ts       edge gate for app routes
+components/*Client  interactive views calling server actions
+```
+
+**The escrow state machine runs server-side** in `app/actions.ts`:
+`locked → in-qa → released` (approve) or `in-qa → revision → in-qa` (revise →
+resubmit). Every transition validates ownership, writes double-entry-style
+ledger rows (release + QA fee), and appends to the audit log shown in the
+admin panel. State persists in `.data/db.json` — approvals, new projects, and
+chat messages survive restarts.
+
+**Storage:** the JSON store works anywhere with a writable disk (dev, VPS,
+Docker volume — set `SDMP_DATA_DIR` to relocate it). On serverless platforms
+the filesystem is ephemeral, so state resets on cold starts; swap `lib/db.ts`
+for Postgres (Prisma/Drizzle) behind the same exported functions when you
+outgrow it.
+
+**Environment variables:**
+
+| Var | Purpose |
+|---|---|
+| `SDMP_SECRET` | HMAC key for session cookies — **set this in production** |
+| `SDMP_DATA_DIR` | Data directory (default `./.data`) |
+
+## 🚧 Remaining production work
+
+1. **Real database** — Postgres behind `lib/db.ts`'s interface (serverless-safe).
+2. **OAuth + 2FA** — Auth.js/Clerk for Google/GitHub/Microsoft/Apple + TOTP.
+3. **Payments** — Stripe Connect: real deposits/transfers driven by the same
+   state machine, webhooks reconciling the ledger.
 4. **Real-time** — WebSockets (or Pusher/Ably) for chat, presence, typing
    indicators, and notifications.
-5. **Integrations** — GitHub/GitLab/Bitbucket OAuth apps for commit feeds,
-   Figma embeds, WebRTC for calls/screen share.
+5. **Integrations** — GitHub/GitLab/Bitbucket commit feeds, Figma embeds,
+   WebRTC calls/screen share.
 
 ## 📄 License
 

@@ -17,13 +17,14 @@ export default async function Dashboard() {
   const user = await requireUser();
   const db = await readDb();
   const projects = db.projects.filter((p) => p.clientId === user.id || user.role === "admin");
+  const ledger = db.ledger.filter((t) => t.ownerId === user.id || user.role === "admin");
 
   const active = projects.filter((p) => p.status !== "completed");
   const lockedTotal = projects
     .flatMap((p) => p.milestones)
     .filter((m) => m.state !== "released")
     .reduce((s, m) => s + m.amount, 0);
-  const releasedTotal = db.ledger
+  const releasedTotal = ledger
     .filter((t) => t.type === "release")
     .reduce((s, t) => s + Math.abs(t.amount), 0);
   const needsApproval = projects.flatMap((p) =>
@@ -119,6 +120,9 @@ export default async function Dashboard() {
 
           <div className="card pad col">
             <div className="row between"><b className="h-md">Messages</b><Link className="small" style={{ color: "var(--primary)" }} href="/messages">Open inbox →</Link></div>
+            {db.messages.length === 0 && (
+              <p className="small text-3">No messages yet — threads open when you hire.</p>
+            )}
             {db.messages.slice(-3).reverse().map((m) => (
               <Link key={m.id} className="row" href="/messages">
                 <span className="avatar sm a2">{m.senderInitials}</span>
@@ -149,7 +153,10 @@ export default async function Dashboard() {
         <table className="table">
           <thead><tr><th>Date</th><th>Event</th><th>Amount</th><th>Status</th></tr></thead>
           <tbody>
-            {db.ledger.slice(-6).reverse().map((t) => (
+            {ledger.length === 0 && (
+              <tr><td colSpan={4} className="text-3">No activity yet — it starts when you post your first project.</td></tr>
+            )}
+            {ledger.slice(-6).reverse().map((t) => (
               <tr key={t.id}>
                 <td className="mono">{t.date}</td>
                 <td>{t.description}</td>

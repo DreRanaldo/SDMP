@@ -28,14 +28,20 @@ npm start          # serves the production build on :3000
 
 ## 📦 Deploy
 
-**Vercel (recommended — one step):**
+**Vercel (recommended):**
 
-```bash
-npx vercel         # or connect the GitHub repo at vercel.com/new
-```
+1. Import the repo at **vercel.com/new** (or `npx vercel`).
+2. In the project: **Storage → Create Database → Postgres (Neon)** and connect
+   it — this injects `DATABASE_URL` automatically. Any other hosted Postgres
+   (Neon, Supabase, RDS) works too: just set `DATABASE_URL` yourself.
+3. **Settings → Environment Variables:** add `SDMP_SECRET` = a long random
+   string (e.g. `openssl rand -hex 32`).
+4. Redeploy, open the site, and **register the first account — it becomes
+   the platform admin.**
 
-Set `SDMP_SECRET` (any long random string) in production. Note: on serverless
-hosts the demo's JSON store is ephemeral — fine for previews; see Architecture.
+Without a database attached the app still runs (it falls back to ephemeral
+temp-dir storage) but accounts and projects reset on cold starts — attach
+Postgres before inviting real users.
 
 **Netlify:** connect the repo, build command `npm run build` (the Next.js runtime is auto-detected).
 
@@ -54,7 +60,7 @@ npm start          # behind nginx/caddy, or use PORT=8080 npm start
 | `/login` | Auth — email + OAuth (Google/GitHub/Microsoft/Apple), 2FA hint |
 | `/dashboard` | Client dashboard — stats, active projects, action items, wallet snapshot, activity feed |
 | `/post-project` | 4-step project wizard with AI estimator, visibility, QA mode, escrow funding |
-| `/browse` | Talent search — role tabs, live text filter, advanced filter rail |
+| `/browse` | Talent search — lists real registered members, filter rail |
 | `/profile` | Developer profile — skills, portfolio, reviews, certificates, achievements |
 | `/project` | Project workspace — Kanban board, **interactive milestone approval → escrow release**, QA report, commits |
 | `/messages` | Real-time-style chat — threads, code snippets, typing indicator, milestone cards, **send messages** |
@@ -84,14 +90,10 @@ Real session auth is built in — no external identity provider required:
 - **Middleware** bounces unauthenticated requests off all app routes
 - **Roles** (`client` / `developer` / `tester` / `admin`) — the admin panel is
   role-gated server-side via `requireRole("admin")`
-- **Register** creates a working client account with an empty dashboard
 
-Demo accounts (seeded on first run):
-
-| Account | Email | Password |
-|---|---|---|
-| Client | `andre@demo.sdmp` | `demo1234` |
-| Admin | `admin@demo.sdmp` | `admin1234` |
+There is **no seed data**. The database starts empty and **the first account
+registered becomes the platform admin** — register yours immediately after
+deploying.
 
 ## 🏗️ Architecture
 
@@ -110,29 +112,35 @@ ledger rows (release + QA fee), and appends to the audit log shown in the
 admin panel. State persists in `.data/db.json` — approvals, new projects, and
 chat messages survive restarts.
 
-**Storage:** the JSON store works anywhere with a writable disk (dev, VPS,
-Docker volume — set `SDMP_DATA_DIR` to relocate it). On serverless platforms
-the filesystem is ephemeral, so state resets on cold starts; swap `lib/db.ts`
-for Postgres (Prisma/Drizzle) behind the same exported functions when you
-outgrow it.
+**Storage** is selected automatically by `lib/db.ts`:
+
+- **`DATABASE_URL` set → Postgres.** Durable, serverless-safe. The schema
+  (a single JSONB document table) is created automatically on first request;
+  writes run inside `SELECT … FOR UPDATE` transactions.
+- **No `DATABASE_URL` → JSON file store** for local dev (`./.data`, or
+  `SDMP_DATA_DIR`). If the working directory is read-only (a serverless
+  deploy without a database) it falls back to the OS temp dir, so the site
+  keeps working with ephemeral storage instead of crashing.
 
 **Environment variables:**
 
 | Var | Purpose |
 |---|---|
-| `SDMP_SECRET` | HMAC key for session cookies — **set this in production** |
-| `SDMP_DATA_DIR` | Data directory (default `./.data`) |
+| `SDMP_SECRET` | HMAC key for session cookies — **required in production** |
+| `DATABASE_URL` | Postgres connection string — **required for durable data** |
+| `SDMP_DATA_DIR` | Local JSON store directory (dev only, default `./.data`) |
 
 ## 🚧 Remaining production work
 
-1. **Real database** — Postgres behind `lib/db.ts`'s interface (serverless-safe).
-2. **OAuth + 2FA** — Auth.js/Clerk for Google/GitHub/Microsoft/Apple + TOTP.
-3. **Payments** — Stripe Connect: real deposits/transfers driven by the same
+1. **OAuth + 2FA** — Auth.js/Clerk for Google/GitHub/Microsoft/Apple + TOTP.
+2. **Payments** — Stripe Connect: real deposits/transfers driven by the same
    state machine, webhooks reconciling the ledger.
-4. **Real-time** — WebSockets (or Pusher/Ably) for chat, presence, typing
+3. **Real-time** — WebSockets (or Pusher/Ably) for chat, presence, typing
    indicators, and notifications.
-5. **Integrations** — GitHub/GitLab/Bitbucket commit feeds, Figma embeds,
+4. **Integrations** — GitHub/GitLab/Bitbucket commit feeds, Figma embeds,
    WebRTC calls/screen share.
+5. **Marketplace depth** — public developer/tester profiles with skills and
+   rates, proposals & hiring flow, per-project chat threads, notifications.
 
 ## 📄 License
 

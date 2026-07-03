@@ -66,17 +66,23 @@ export async function register(name: string, email: string, password: string): P
       .join("")
       .slice(0, 2)
       .toUpperCase();
+    // The very first account on the platform becomes the admin.
+    const role = db.users.length === 0 ? ("admin" as const) : ("client" as const);
     const user = {
       id: `u-${uuid()}`,
       email: cleanEmail,
       name: cleanName,
       initials: initials || "U",
-      role: "client" as const,
+      role,
       passwordHash: hashPassword(password),
       createdAt: new Date().toISOString(),
     };
     db.users.push(user);
-    db.audit.push({ id: uuid(), at: nowClock(), text: `system register user ${cleanEmail}` });
+    db.audit.push({
+      id: uuid(),
+      at: nowClock(),
+      text: `system register ${role === "admin" ? "ADMIN" : "user"} ${cleanEmail}`,
+    });
     return toSafeUser(user);
   });
   if (!created) return { error: "An account with that email already exists." };
@@ -135,6 +141,7 @@ export async function createProject(input: {
     db.projects.unshift(project);
     db.ledger.push({
       id: `tx-${uuid().slice(0, 6)}`,
+      ownerId: user.id,
       date: today(),
       description: `Escrow deposit · ${title} (full amount)`,
       type: "deposit",
@@ -172,6 +179,7 @@ export async function approveMilestone(projectId: string, milestoneId: number): 
     db.ledger.push(
       {
         id: `tx-${uuid().slice(0, 6)}`,
+        ownerId: project.clientId,
         date: today(),
         description: `Escrow release · ${project.title} ${milestone.title.split(" — ")[0]} → ${project.developerName}`,
         type: "release",
@@ -181,6 +189,7 @@ export async function approveMilestone(projectId: string, milestoneId: number): 
       },
       {
         id: `tx-${uuid().slice(0, 6)}`,
+        ownerId: project.clientId,
         date: today(),
         description: `QA fee · ${project.title} ${milestone.title.split(" — ")[0]} → ${project.testerName}`,
         type: "qa-fee",
@@ -226,6 +235,33 @@ export async function requestRevision(projectId: string, milestoneId: number): P
     return {};
   });
 
+  revalidatePath("/project");
+  revalidatePath("/dashboard");
+  return result;
+}
+
+/**
+ * Developer submits a milestone for QA (locked → in-qa). Exposed on the
+ * workspace so the full lifecycle can be driven; in the marketplace release
+ * this fires from the developer's account when they deliver.
+ */
+export async function submitMilestone(projectId: string, milestoneId: number): Promise<ActionResult> {
+  await requireUser();
+  const result = await updateDb((db): ActionResult => {
+    const project = db.projects.find((p) => p.id === projectId);
+    const milestone = project?.milestones.find((m) => m.id === milestoneId);
+    if (!project || !milestone) return { error: "Milestone not found." };
+    if (milestone.state !== "locked") return { error: "Only locked milestones can be submitted." };
+    const earlier = project.milestones.filter((m) => m.id < milestoneId);
+    if (earlier.some((m) => m.state !== "released")) {
+      return { error: "Earlier milestones must be released first." };
+    }
+    milestone.state = "in-qa";
+    milestone.detail = `Submitted ${today()} · In QA (${project.testerName})`;
+    project.status = "in-qa";
+    db.audit.push({ id: uuid(), at: nowClock(), text: `developer submit · ${project.title} M${milestoneId} → QA` });
+    return {};
+  });
   revalidatePath("/project");
   revalidatePath("/dashboard");
   return result;

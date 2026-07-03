@@ -1,14 +1,23 @@
 /**
- * SDMP data layer — file-backed JSON store with an async mutex.
+ * SDMP data layer.
  *
- * Works anywhere with a writable disk (dev, VPS, Docker volume). On
- * serverless platforms the filesystem is ephemeral — swap this module for a
- * real database (Postgres + Prisma/Drizzle) behind the same exported
- * functions; nothing else in the app touches storage directly.
+ * Backend is chosen automatically:
+ *  - DATABASE_URL / POSTGRES_URL set  → Postgres (durable; use in production).
+ *    State lives in a single JSONB document row, mutated inside a
+ *    SELECT … FOR UPDATE transaction so concurrent writes serialize safely.
+ *  - otherwise                        → file-backed JSON store for local dev.
+ *    If the working directory is read-only (serverless preview without a
+ *    database attached) it falls back to the OS temp dir so the app degrades
+ *    to ephemeral storage instead of crashing.
+ *
+ * The store starts EMPTY — no demo accounts or seed projects. The first
+ * registered user becomes the platform admin (see app/actions.ts).
  */
 import { promises as fs } from "fs";
+import os from "os";
 import path from "path";
 import { randomUUID, scryptSync, randomBytes } from "crypto";
+import { Pool } from "pg";
 
 export type Role = "client" | "developer" | "tester" | "admin";
 
@@ -59,6 +68,8 @@ export type LedgerType = "deposit" | "release" | "qa-fee" | "refund" | "fee";
 
 export interface LedgerEntry {
   id: string;
+  /** User whose wallet this entry belongs to (the paying client). */
+  ownerId: string;
   date: string;
   description: string;
   type: LedgerType;
@@ -92,196 +103,168 @@ export interface Db {
   audit: AuditEvent[];
 }
 
-const DATA_DIR = process.env.SDMP_DATA_DIR || path.join(process.cwd(), ".data");
-const DB_FILE = path.join(DATA_DIR, "db.json");
-
 export function hashPassword(password: string): string {
   const salt = randomBytes(16).toString("hex");
   return `${salt}:${scryptSync(password, salt, 64).toString("hex")}`;
 }
 
-function seed(): Db {
-  const now = new Date().toISOString();
-  const andre: User = {
-    id: "u-andre",
-    email: "andre@demo.sdmp",
-    name: "Andre Grant",
-    initials: "AG",
-    role: "client",
-    passwordHash: hashPassword("demo1234"),
-    createdAt: now,
-  };
-  const admin: User = {
-    id: "u-admin",
-    email: "admin@demo.sdmp",
-    name: "SDMP Admin",
-    initials: "AD",
-    role: "admin",
-    passwordHash: hashPassword("admin1234"),
-    createdAt: now,
-  };
-  const maya: User = {
-    id: "u-maya",
-    email: "maya@demo.sdmp",
-    name: "Maya Kim",
-    initials: "MK",
-    role: "developer",
-    passwordHash: hashPassword("demo1234"),
-    createdAt: now,
-  };
-
-  return {
-    users: [andre, admin, maya],
-    projects: [
-      {
-        id: "fintech-dashboard",
-        title: "Fintech Dashboard · React + Go",
-        clientId: andre.id,
-        developerName: "Maya Kim",
-        developerInitials: "MK",
-        avatarClass: "a2",
-        testerName: "Rita Torres",
-        stack: ["React", "Go", "PostgreSQL", "AWS"],
-        status: "in-qa",
-        visibility: "Private project",
-        priority: "High",
-        dueDate: "Jul 14",
-        proposals: 18,
-        createdAt: now,
-        milestones: [
-          { id: 1, title: "M1 — Auth, accounts & billing", amount: 4000, state: "released", detail: "Delivered Jun 18 · QA passed · Released Jun 26 ✓" },
-          { id: 2, title: "M2 — Dashboards, charts & exports", amount: 4000, state: "in-qa", detail: "Submitted Jul 1 · In QA (Rita Torres) · 32/34 checks passed" },
-          { id: 3, title: "M3 — Audit logs, import & polish", amount: 4000, state: "locked", detail: "Starts after M2 approval · due Jul 28 · 🔒 locked in escrow" },
-        ],
-      },
-      {
-        id: "fitness-app",
-        title: "Fitness App (iOS/Android)",
-        clientId: andre.id,
-        developerName: "Diego Alvarez",
-        developerInitials: "DA",
-        avatarClass: "a4",
-        testerName: "Unassigned",
-        stack: ["Flutter", "HealthKit", "GraphQL"],
-        status: "in-progress",
-        visibility: "Public",
-        priority: "Normal",
-        dueDate: "Jul 22",
-        proposals: 22,
-        createdAt: now,
-        milestones: [
-          { id: 1, title: "M1 — Auth & onboarding", amount: 5000, state: "locked", detail: "In progress · due Jul 22" },
-          { id: 2, title: "M2 — Tracking & wearable sync", amount: 7000, state: "locked", detail: "🔒 locked in escrow" },
-          { id: 3, title: "M3 — Social challenges", amount: 3500, state: "locked", detail: "🔒 locked in escrow" },
-          { id: 4, title: "M4 — Polish & release", amount: 2500, state: "locked", detail: "🔒 locked in escrow" },
-        ],
-      },
-      {
-        id: "support-ai-agent",
-        title: "Support AI Agent",
-        clientId: andre.id,
-        developerName: "Unassigned",
-        developerInitials: "AI",
-        avatarClass: "a3",
-        testerName: "Unassigned",
-        stack: ["Python", "Claude API", "PostgreSQL"],
-        status: "proposals",
-        visibility: "Public",
-        priority: "High",
-        dueDate: "Aug 15",
-        proposals: 31,
-        createdAt: now,
-        milestones: [
-          { id: 1, title: "M1 — Ingestion + RAG pipeline", amount: 3200, state: "locked", detail: "Awaiting hire" },
-          { id: 2, title: "M2 — Chat UI + handoff", amount: 3200, state: "locked", detail: "🔒 locked in escrow" },
-          { id: 3, title: "M3 — Analytics console + hardening", amount: 3100, state: "locked", detail: "🔒 locked in escrow" },
-        ],
-      },
-      {
-        id: "marketing-website",
-        title: "Marketing Website",
-        clientId: andre.id,
-        developerName: "Maya Kim",
-        developerInitials: "MK",
-        avatarClass: "a5",
-        testerName: "Rita Torres",
-        stack: ["Next.js", "Tailwind"],
-        status: "completed",
-        visibility: "Private project",
-        priority: "Normal",
-        dueDate: "Jun 20",
-        proposals: 9,
-        createdAt: now,
-        milestones: [
-          { id: 1, title: "M1 — Design & build", amount: 3250, state: "released", detail: "Released Jun 12 ✓" },
-          { id: 2, title: "M2 — CMS & launch", amount: 3250, state: "released", detail: "Released Jun 20 ✓ · ★ 5.0 review left" },
-        ],
-      },
-    ],
-    ledger: [
-      { id: "tx-1026", date: "Jun 18", description: "Platform service fee (5% · Pro plan)", type: "fee", amount: -162.5, status: "Settled", invoice: "INV-1026" },
-      { id: "tx-1027", date: "Jun 20", description: "Escrow release · Marketing Website final → Maya Kim", type: "release", amount: -3250, status: "Settled", invoice: "INV-1027" },
-      { id: "tx-1031", date: "Jun 24", description: "Refund · cancelled Chrome extension project", type: "refund", amount: 1200, status: "Settled", invoice: "INV-1031" },
-      { id: "tx-1039", date: "Jun 30", description: "Escrow deposit · Fitness App (full amount)", type: "deposit", amount: 18000, status: "Locked", invoice: "INV-1039" },
-      { id: "tx-1042", date: "Jul 01", description: "Escrow release · Fintech Dashboard M1 → Maya Kim", type: "release", amount: -4000, status: "Settled", invoice: "INV-1042" },
-      { id: "tx-1043", date: "Jul 01", description: "QA fee · Fintech Dashboard M1 → Rita Torres", type: "qa-fee", amount: -320, status: "Settled", invoice: "INV-1043" },
-    ],
-    messages: [
-      { id: randomUUID(), senderId: "u-maya", senderName: "Maya Kim", senderInitials: "MK", time: "9:14 AM", text: "Morning Andre! The real-time chart streaming is in. WebSocket layer pushes deltas every 500ms with backpressure handling." },
-      { id: randomUUID(), senderId: "u-maya", senderName: "Maya Kim", senderInitials: "MK", time: "9:15 AM", text: "Here's the subscription hook if you want a peek:", code: "const usePriceStream = (symbol: string) =>\n  useSubscription(PRICE_STREAM, {\n    variables: { symbol },\n    onData: ({ data }) => buffer.push(data),\n  });" },
-      { id: randomUUID(), senderId: "u-andre", senderName: "Andre Grant", senderInitials: "AG", time: "9:22 AM · Read ✓✓", text: "This looks great! 🔥 How does it behave on flaky connections?" },
-      { id: randomUUID(), senderId: "u-maya", senderName: "Maya Kim", senderInitials: "MK", time: "9:24 AM", text: "Auto-reconnect with exponential backoff, and the buffer replays missed deltas. Rita can hammer it in QA — I added a network-throttle test case to the checklist." },
-      { id: randomUUID(), senderId: "u-maya", senderName: "Maya Kim", senderInitials: "MK", time: "9:26 AM", text: "Friday demo recording — full walkthrough of M2", file: "milestone-2-demo.mp4 (38 MB)" },
-    ],
-    audit: [
-      { id: randomUUID(), at: "13:40", text: "admin.rt ban user spam_4412 (ToS 4.2)" },
-      { id: randomUUID(), at: "13:47", text: "system flag payment pi_9f2… (velocity)" },
-      { id: randomUUID(), at: "13:51", text: "admin.jd verify user jonas.weber" },
-      { id: randomUUID(), at: "13:58", text: "system release $4,000 → maya.kim" },
-      { id: randomUUID(), at: "14:02", text: "admin.rt freeze escrow DSP-3041" },
-    ],
-  };
+function emptyDb(): Db {
+  return { users: [], projects: [], ledger: [], messages: [], audit: [] };
 }
 
-// ---- store ----
+// ---------------------------------------------------------------- backends
 
-let queue: Promise<unknown> = Promise.resolve();
-
-/** Serialize all read-modify-write cycles through a single promise chain. */
-function withLock<T>(fn: () => Promise<T>): Promise<T> {
-  const next = queue.then(fn, fn);
-  queue = next.catch(() => {});
-  return next;
+interface Store {
+  read(): Promise<Db>;
+  update<T>(mutate: (db: Db) => T | Promise<T>): Promise<T>;
 }
 
-async function load(): Promise<Db> {
-  try {
-    return JSON.parse(await fs.readFile(DB_FILE, "utf8")) as Db;
-  } catch {
-    const db = seed();
-    await save(db);
-    return db;
+// ---- Postgres (production) ----
+
+class PostgresStore implements Store {
+  private pool: Pool;
+  private ready: Promise<void> | null = null;
+
+  constructor(url: string) {
+    const local = /localhost|127\.0\.0\.1/.test(url);
+    this.pool = new Pool({
+      connectionString: url,
+      max: 3,
+      ssl: local ? undefined : { rejectUnauthorized: false },
+    });
+  }
+
+  private init(): Promise<void> {
+    if (!this.ready) {
+      this.ready = (async () => {
+        await this.pool.query(
+          "CREATE TABLE IF NOT EXISTS sdmp_store (id TEXT PRIMARY KEY, data JSONB NOT NULL)",
+        );
+        await this.pool.query(
+          "INSERT INTO sdmp_store (id, data) VALUES ('db', $1) ON CONFLICT (id) DO NOTHING",
+          [emptyDb()],
+        );
+      })();
+      // Allow a retry on transient startup failure instead of caching the rejection.
+      this.ready.catch(() => { this.ready = null; });
+    }
+    return this.ready;
+  }
+
+  async read(): Promise<Db> {
+    await this.init();
+    const r = await this.pool.query("SELECT data FROM sdmp_store WHERE id = 'db'");
+    return (r.rows[0]?.data as Db) ?? emptyDb();
+  }
+
+  async update<T>(mutate: (db: Db) => T | Promise<T>): Promise<T> {
+    await this.init();
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const r = await client.query("SELECT data FROM sdmp_store WHERE id = 'db' FOR UPDATE");
+      const db: Db = (r.rows[0]?.data as Db) ?? emptyDb();
+      const result = await mutate(db);
+      await client.query("UPDATE sdmp_store SET data = $1 WHERE id = 'db'", [db]);
+      await client.query("COMMIT");
+      return result;
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
   }
 }
 
-async function save(db: Db): Promise<void> {
-  await fs.mkdir(DATA_DIR, { recursive: true });
-  const tmp = DB_FILE + ".tmp";
-  await fs.writeFile(tmp, JSON.stringify(db, null, 2));
-  await fs.rename(tmp, DB_FILE);
+// ---- File-backed JSON (local dev / no-database fallback) ----
+
+class FileStore implements Store {
+  private queue: Promise<unknown> = Promise.resolve();
+  private dir: string | null = null;
+
+  private async ensureDir(): Promise<string> {
+    if (this.dir) return this.dir;
+    const candidates = [
+      process.env.SDMP_DATA_DIR,
+      path.join(process.cwd(), ".data"),
+      path.join(os.tmpdir(), "sdmp-data"),
+    ].filter(Boolean) as string[];
+    for (const dir of candidates) {
+      try {
+        await fs.mkdir(dir, { recursive: true });
+        await fs.writeFile(path.join(dir, ".write-test"), "ok");
+        await fs.rm(path.join(dir, ".write-test"), { force: true });
+        this.dir = dir;
+        return dir;
+      } catch {
+        // read-only location (e.g. serverless bundle) — try the next candidate
+      }
+    }
+    throw new Error("SDMP: no writable data directory found. Set DATABASE_URL or SDMP_DATA_DIR.");
+  }
+
+  private withLock<T>(fn: () => Promise<T>): Promise<T> {
+    const next = this.queue.then(fn, fn);
+    this.queue = next.catch(() => {});
+    return next;
+  }
+
+  private async load(): Promise<Db> {
+    const dir = await this.ensureDir();
+    try {
+      return JSON.parse(await fs.readFile(path.join(dir, "db.json"), "utf8")) as Db;
+    } catch {
+      const db = emptyDb();
+      await this.save(db);
+      return db;
+    }
+  }
+
+  private async save(db: Db): Promise<void> {
+    const dir = await this.ensureDir();
+    const file = path.join(dir, "db.json");
+    await fs.writeFile(file + ".tmp", JSON.stringify(db, null, 2));
+    await fs.rename(file + ".tmp", file);
+  }
+
+  read(): Promise<Db> {
+    return this.withLock(() => this.load());
+  }
+
+  update<T>(mutate: (db: Db) => T | Promise<T>): Promise<T> {
+    return this.withLock(async () => {
+      const db = await this.load();
+      const result = await mutate(db);
+      await this.save(db);
+      return result;
+    });
+  }
+}
+
+// ---------------------------------------------------------------- selection
+
+const PG_URL =
+  process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.POSTGRES_PRISMA_URL;
+
+declare global {
+  // eslint-disable-next-line no-var
+  var __sdmpStore: Store | undefined;
+}
+
+function getStore(): Store {
+  if (!globalThis.__sdmpStore) {
+    globalThis.__sdmpStore = PG_URL ? new PostgresStore(PG_URL) : new FileStore();
+  }
+  return globalThis.__sdmpStore;
 }
 
 export function readDb(): Promise<Db> {
-  return withLock(load);
+  return getStore().read();
 }
 
 export function updateDb<T>(mutate: (db: Db) => T | Promise<T>): Promise<T> {
-  return withLock(async () => {
-    const db = await load();
-    const result = await mutate(db);
-    await save(db);
-    return result;
-  });
+  return getStore().update(mutate);
 }
 
 export function toSafeUser(u: User): SafeUser {

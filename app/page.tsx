@@ -1,6 +1,6 @@
 import Link from "next/link";
 import MarketingNav from "@/components/MarketingNav";
-import { categories, developers } from "@/lib/data";
+import { categories } from "@/lib/data";
 
 export default function Landing() {
   return (
@@ -14,7 +14,7 @@ export default function Landing() {
         </div>
         <div className="container hero-grid">
           <div className="col" style={{ gap: 22 }}>
-            <span className="badge badge-accent fade-up"><span className="dot pulse" /> 12,480 developers online now</span>
+            <span className="badge badge-accent fade-up"><span className="dot pulse" /> Now in public launch</span>
             <h1 className="h-display fade-up d1">
               Find Expert Developers.<br />
               <span className="grad-text">Build Amazing Software.</span>
@@ -27,11 +27,6 @@ export default function Landing() {
               <Link className="btn btn-primary btn-lg" href="/browse">Hire Developers</Link>
               <Link className="btn btn-secondary btn-lg" href="/browse">Find Work</Link>
               <Link className="btn btn-ghost btn-lg" href="/browse">Browse Projects →</Link>
-            </div>
-            <div className="row wrap fade-up d4" style={{ gap: 28, marginTop: 10 }}>
-              <div><b style={{ fontSize: "1.3rem" }}>48K+</b><div className="small text-3">Projects delivered</div></div>
-              <div><b style={{ fontSize: "1.3rem" }}>$92M</b><div className="small text-3">Paid via escrow</div></div>
-              <div><b style={{ fontSize: "1.3rem" }}>4.9<span className="stars">★</span></b><div className="small text-3">Avg. satisfaction</div></div>
             </div>
           </div>
 
@@ -66,14 +61,6 @@ export default function Landing() {
         </div>
       </header>
 
-      {/* Trusted companies */}
-      <section className="container mt-3 mb-3">
-        <p className="center small text-3 mb-2">TRUSTED BY TEAMS AT</p>
-        <div className="trust-row">
-          <span>ACME&nbsp;CORP</span><span>Northwind</span><span>Globex</span><span>Initech</span><span>Umbrella</span><span>Stark&nbsp;Labs</span>
-        </div>
-      </section>
-
       {/* Categories */}
       <section className="container mt-4">
         <div className="row between mb-3">
@@ -85,67 +72,9 @@ export default function Landing() {
             <Link key={c.name} className="card hover cat-card" href="/browse">
               <span className="cat-icon" style={{ background: c.tint }}>{c.icon}</span>
               <b>{c.name}</b>
-              <span className="small text-3">{c.experts} experts</span>
+              <span className="small text-3">Browse specialists →</span>
             </Link>
           ))}
-        </div>
-      </section>
-
-      {/* Featured developers */}
-      <section className="container mt-4">
-        <div className="row between mb-3">
-          <div><h2 className="h-xl">Featured developers</h2><p className="text-2">Verified, top-rated, and ready to start.</p></div>
-          <Link className="btn btn-secondary" href="/browse">View all →</Link>
-        </div>
-        <div className="grid g3">
-          {developers.slice(0, 3).map((d) => (
-            <div key={d.id} className="card hover dev-card">
-              <div className="row" style={{ width: "100%" }}>
-                <span className="avatar-wrap"><span className={`avatar lg ${d.avatarClass}${d.online ? " online" : ""}`}>{d.initials}</span></span>
-                <div className="flex1"><b>{d.name}</b><div className="small text-3">{d.title.replace(" Developer", "")} · {d.location}</div></div>
-                <span className={`badge badge-${d.badges[d.badges.length - 1].tone}`}>{d.badges[d.badges.length - 1].label}</span>
-              </div>
-              <div className="stars">★★★★★ <span className="text-2">{d.rating.toFixed(1)} ({d.reviews})</span></div>
-              <div className="row wrap gap-sm">
-                {d.skills.slice(0, 4).map((s) => <span key={s} className="badge badge-neutral">{s}</span>)}
-              </div>
-              <div className="row between" style={{ width: "100%" }}>
-                <b>${d.rate}/hr</b>
-                <Link className="btn btn-primary btn-sm" href="/profile">View Profile</Link>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* Trending projects */}
-      <section className="container mt-4">
-        <div className="row between mb-3">
-          <div><h2 className="h-xl">Trending projects</h2><p className="text-2">Fresh opportunities posted by clients this week.</p></div>
-          <Link className="btn btn-secondary" href="/browse">Browse all →</Link>
-        </div>
-        <div className="grid g3">
-          <div className="card hover pad col">
-            <div className="row between"><span className="badge badge-primary">Web App</span><span className="small text-3">2h ago</span></div>
-            <b className="h-md">B2B SaaS Analytics Dashboard</b>
-            <p className="small text-2">React + Node.js dashboard with role-based access, Stripe billing, and real-time charts.</p>
-            <div className="row wrap gap-sm"><span className="badge badge-neutral">React</span><span className="badge badge-neutral">Node.js</span><span className="badge badge-neutral">Stripe</span></div>
-            <div className="row between mt-1"><b className="grad-text">$8,000 – $12,000</b><span className="small text-3">14 proposals</span></div>
-          </div>
-          <div className="card hover pad col">
-            <div className="row between"><span className="badge badge-secondary">Mobile</span><span className="small text-3">5h ago</span></div>
-            <b className="h-md">Fitness App with Wearable Sync</b>
-            <p className="small text-2">Cross-platform app with Apple Health / Google Fit integration and social challenges.</p>
-            <div className="row wrap gap-sm"><span className="badge badge-neutral">Flutter</span><span className="badge badge-neutral">HealthKit</span><span className="badge badge-neutral">GraphQL</span></div>
-            <div className="row between mt-1"><b className="grad-text">$15,000 – $20,000</b><span className="small text-3">22 proposals</span></div>
-          </div>
-          <div className="card hover pad col">
-            <div className="row between"><span className="badge badge-accent">AI</span><span className="small text-3">1d ago</span></div>
-            <b className="h-md">Customer-Support AI Agent</b>
-            <p className="small text-2">RAG-powered chatbot over product docs with human-handoff and analytics.</p>
-            <div className="row wrap gap-sm"><span className="badge badge-neutral">Python</span><span className="badge badge-neutral">Claude API</span><span className="badge badge-neutral">Postgres</span></div>
-            <div className="row between mt-1"><b className="grad-text">$6,000 – $9,500</b><span className="small text-3">31 proposals</span></div>
-          </div>
         </div>
       </section>
 
@@ -185,16 +114,6 @@ export default function Landing() {
               </div>
             </div>
           </div>
-        </div>
-      </section>
-
-      {/* Testimonials */}
-      <section className="container mt-4">
-        <div className="center mb-3"><h2 className="h-xl">Success stories</h2><p className="text-2">Thousands of products shipped through SDMP.</p></div>
-        <div className="grid g3">
-          <div className="card pad col hover"><div className="stars">★★★★★</div><p className="small text-2">&ldquo;The escrow + QA combo removed all the risk. Our MVP shipped two weeks early and every milestone was independently verified.&rdquo;</p><div className="row"><span className="avatar sm a5">JL</span><div><b className="small">James Liu</b><div className="tiny text-3">Founder, Finlytics</div></div></div></div>
-          <div className="card pad col hover"><div className="stars">★★★★★</div><p className="small text-2">&ldquo;As a developer, getting paid the moment QA passes is a game changer. No more chasing invoices — ever.&rdquo;</p><div className="row"><span className="avatar sm a3">AO</span><div><b className="small">Amara Okafor</b><div className="tiny text-3">ML Engineer</div></div></div></div>
-          <div className="card pad col hover"><div className="stars">★★★★★</div><p className="small text-2">&ldquo;We hired a full team — dev, designer, and tester — in 48 hours. The shared workspace kept everyone in sync.&rdquo;</p><div className="row"><span className="avatar sm a4">SP</span><div><b className="small">Sara Patel</b><div className="tiny text-3">CTO, Healthloop</div></div></div></div>
         </div>
       </section>
 
@@ -246,7 +165,7 @@ export default function Landing() {
       <section className="container mt-4 mb-3">
         <div className="center card pad" style={{ borderRadius: "var(--r-xl)", padding: "56px 24px", background: "var(--grad-brand)", border: 0 }}>
           <h2 className="h-xl" style={{ color: "#fff" }}>Ready to build something amazing?</h2>
-          <p style={{ color: "rgba(255,255,255,.85)", maxWidth: "32rem", margin: "10px auto 24px" }}>Join 60,000+ clients, developers, and testers shipping software the safe way.</p>
+          <p style={{ color: "rgba(255,255,255,.85)", maxWidth: "32rem", margin: "10px auto 24px" }}>Be among the first clients, developers, and testers shipping software the safe way.</p>
           <div className="row" style={{ justifyContent: "center" }}>
             <Link className="btn btn-lg" style={{ background: "#fff", color: "var(--primary)" }} href="/browse">Hire Developers</Link>
             <Link className="btn btn-lg" style={{ border: "1.5px solid rgba(255,255,255,.6)", color: "#fff" }} href="/browse">Find Work</Link>

@@ -24,14 +24,6 @@ export default function Login() {
     });
   }
 
-  function demo(demoEmail: string, demoPassword: string) {
-    setError(null);
-    startTransition(async () => {
-      const res = await login(demoEmail, demoPassword);
-      if (res?.error) setError(res.error);
-    });
-  }
-
   return (
     <div className="auth-wrap">
       <div className="hero-bg"><div className="blob b1" /><div className="blob b2" /></div>
@@ -46,19 +38,6 @@ export default function Login() {
           <p className="small text-3">
             {mode === "login" ? "Log in to hire, build, or test software." : "Free to join — hire, work, or test."}
           </p>
-        </div>
-
-        <div className="col gap-sm">
-          <button className="oauth-btn" onClick={() => demo("andre@demo.sdmp", "demo1234")} disabled={pending}>
-            👤 Try the client demo <span className="tiny text-3">(andre@demo.sdmp)</span>
-          </button>
-          <button className="oauth-btn" onClick={() => demo("admin@demo.sdmp", "admin1234")} disabled={pending}>
-            🛠️ Try the admin demo <span className="tiny text-3">(admin@demo.sdmp)</span>
-          </button>
-        </div>
-
-        <div className="row" style={{ gap: 10 }}>
-          <hr className="divider flex1" /><span className="tiny text-3">OR</span><hr className="divider flex1" />
         </div>
 
         <form className="col" style={{ gap: 12 }} onSubmit={submit}>
@@ -96,6 +75,7 @@ export default function Login() {
           <a className="text-2" href="#">Forgot password?</a>
           <span className="text-3">🔐 Sessions are signed &amp; HTTP-only</span>
         </div>
+        <p className="center tiny text-3">The first account created on this platform becomes its admin.</p>
         <p className="center tiny text-3">
           {mode === "login" ? (
             <>No account?{" "}

@@ -26,6 +26,7 @@ export default async function Wallet() {
   const user = await requireUser();
   const db = await readDb();
   const projects = db.projects.filter((p) => p.clientId === user.id || user.role === "admin");
+  const ledger = db.ledger.filter((t) => t.ownerId === user.id || user.role === "admin");
 
   const releasable = projects
     .flatMap((p) => p.milestones)
@@ -35,7 +36,7 @@ export default async function Wallet() {
     .flatMap((p) => p.milestones)
     .filter((m) => m.state !== "released")
     .reduce((s, m) => s + m.amount, 0) - releasable;
-  const available = 4242.5; // demo seed: settled balance outside escrow
+  const available = ledger.filter((t) => t.type === "refund").reduce((s2, t) => s2 + t.amount, 0);
   const total = locked + releasable + available;
 
   return (
@@ -67,6 +68,9 @@ export default async function Wallet() {
           <table className="table">
             <thead><tr><th>Project</th><th>Total</th><th>Released</th><th>Locked</th><th>Status</th></tr></thead>
             <tbody>
+              {projects.length === 0 && (
+                <tr><td colSpan={5} className="text-3">No escrow yet — funds appear here when you post a project.</td></tr>
+              )}
               {projects.map((p) => {
                 const totalP = p.milestones.reduce((s, m) => s + m.amount, 0);
                 const releasedP = p.milestones.filter((m) => m.state === "released").reduce((s, m) => s + m.amount, 0);
@@ -88,11 +92,8 @@ export default async function Wallet() {
         <div className="col" style={{ gap: 20 }}>
           <div className="card pad col gap-sm">
             <div className="row between"><b className="h-md">Payment methods</b><button className="btn btn-ghost btn-sm">+ Add</button></div>
-            <div className="card pad row between" style={{ padding: "12px 14px" }}><span className="small">💳 Visa •••• 4242</span><span className="badge badge-primary">Default</span></div>
-            <div className="card pad row between" style={{ padding: "12px 14px" }}><span className="small">🅿️ PayPal · {user.email}</span><span className="badge badge-neutral">Linked</span></div>
-            <div className="card pad row between" style={{ padding: "12px 14px" }}><span className="small">🏦 Bank transfer (ACH)</span><span className="badge badge-neutral">Linked</span></div>
-            <div className="card pad row between" style={{ padding: "12px 14px" }}><span className="small">🌍 Wise · USD/EUR/KRW</span><span className="badge badge-neutral">Linked</span></div>
-            <div className="card pad row between" style={{ padding: "12px 14px" }}><span className="small">₿ Crypto (USDC)</span><button className="btn btn-secondary btn-sm">Enable</button></div>
+            <p className="small text-3">No payment methods yet. Add a card, bank account, PayPal, Wise, or crypto wallet to fund escrow and withdraw earnings.</p>
+            <button className="btn btn-secondary btn-sm" style={{ alignSelf: "flex-start" }}>💳 Add payment method</button>
           </div>
           <div className="card pad col gap-sm" style={{ borderColor: "var(--success)" }}>
             <b className="h-md">🔒 Escrow protection</b>
@@ -110,7 +111,10 @@ export default async function Wallet() {
         <table className="table">
           <thead><tr><th>Date</th><th>Description</th><th>Type</th><th>Amount</th><th>Status</th><th>Invoice</th></tr></thead>
           <tbody>
-            {[...db.ledger].reverse().map((t) => {
+            {ledger.length === 0 && (
+              <tr><td colSpan={6} className="text-3">No transactions yet.</td></tr>
+            )}
+            {[...ledger].reverse().map((t) => {
               const badge = TYPE_BADGE[t.type];
               return (
                 <tr key={t.id}>

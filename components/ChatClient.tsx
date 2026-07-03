@@ -1,24 +1,15 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import AppShell from "@/components/AppShell";
 import { sendMessage } from "@/app/actions";
 import type { ChatMessage, SafeUser } from "@/lib/db";
 
-const threads = [
-  { initials: "MK", cls: "a2", online: true, name: "Maya Kim", time: "2m", last: "Pushed the charting module — ready for QA 🎉", unread: 2 },
-  { initials: "RT", cls: "a3", online: false, name: "Rita Torres (QA)", time: "1h", last: "Found 2 minor bugs in the export flow…", unread: 1 },
-  { initials: "DA", cls: "a4", online: true, name: "Diego Alvarez", time: "3h", last: "Daily update: auth + onboarding done ✓", unread: 0 },
-  { initials: "SD", cls: "a5", online: false, name: "SDMP Support", time: "2d", last: "Your refund for INV-1031 has been processed", unread: 0 },
-];
-
 export default function ChatClient({ user, messages }: { user: SafeUser; messages: ChatMessage[] }) {
   const router = useRouter();
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [activeThread, setActiveThread] = useState(0);
   const [pending, startTransition] = useTransition();
   const bodyRef = useRef<HTMLDivElement>(null);
 
@@ -54,43 +45,47 @@ export default function ChatClient({ user, messages }: { user: SafeUser; message
       <div className="chat-layout">
         {/* Threads */}
         <div className="threads">
-          {threads.map((t, i) => (
-            <button key={t.name} className={`thread${i === activeThread ? " active" : ""}`} onClick={() => setActiveThread(i)}>
-              <span className="avatar-wrap"><span className={`avatar ${t.cls}${t.online ? " online" : ""}`}>{t.initials}</span></span>
-              <div className="flex1" style={{ minWidth: 0 }}>
-                <div className="row between"><b className="small">{t.name}</b><span className="tiny text-3">{t.time}</span></div>
-                <div className="tiny text-3" style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.last}</div>
+          <button className="thread active">
+            <span className="avatar-wrap"><span className="avatar a5 online">#</span></span>
+            <div className="flex1" style={{ minWidth: 0 }}>
+              <div className="row between"><b className="small">General</b></div>
+              <div className="tiny text-3" style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {messages.length ? messages[messages.length - 1].text : "Platform-wide chat"}
               </div>
-              {t.unread > 0 && <span className="badge badge-danger">{t.unread}</span>}
-            </button>
-          ))}
+            </div>
+          </button>
+          <div className="tiny text-3" style={{ padding: "14px 16px" }}>
+            Project threads open automatically when you hire a developer or a tester is assigned.
+          </div>
         </div>
 
-        {/* Conversation (persisted in the data layer) */}
+        {/* Conversation */}
         <div className="chat">
           <div className="chat-head">
-            <span className="avatar-wrap"><span className="avatar a2 online">MK</span></span>
-            <div className="flex1"><b className="small">Maya Kim</b><div className="tiny" style={{ color: "var(--success)" }}>● Online · Fintech Dashboard</div></div>
+            <span className="avatar-wrap"><span className="avatar a5 online">#</span></span>
+            <div className="flex1"><b className="small">General</b><div className="tiny" style={{ color: "var(--success)" }}>● {user.name} · {user.role}</div></div>
             <button className="btn btn-secondary btn-sm">📞 Voice</button>
             <button className="btn btn-secondary btn-sm">🎥 Video</button>
             <button className="btn btn-secondary btn-sm">🖥️ Share screen</button>
           </div>
 
           <div className="chat-body" ref={bodyRef}>
-            <span className="day-sep">Today · July 3</span>
-
+            {messages.length === 0 && (
+              <div className="card pad center col" style={{ gap: 8, alignSelf: "center", maxWidth: 420, marginTop: 40 }}>
+                <span style={{ fontSize: "1.6rem" }}>💬</span>
+                <b className="small">No messages yet</b>
+                <p className="tiny text-3">Say hello — messages are encrypted in transit and persist in your workspace.</p>
+              </div>
+            )}
             {messages.map((m) => {
               const me = m.senderId === user.id;
               return (
                 <div key={m.id} className={`msg${me ? " me" : ""}`}>
                   {!me && <span className="avatar sm a2">{m.senderInitials}</span>}
                   <div>
+                    {!me && <div className="tiny text-3">{m.senderName}</div>}
                     <div className="bubble">
-                      {m.file ? (
-                        <>📎 <b>{m.file.split(" (")[0]}</b> <span className="tiny text-3">({m.file.split(" (")[1]}</span><br /><span className="tiny text-3">{m.text}</span></>
-                      ) : (
-                        m.text
-                      )}
+                      {m.text}
                       {m.code && <div className="code-snip mt-1">{m.code}</div>}
                     </div>
                     <div className="tiny text-3 mt-1" style={me ? { textAlign: "right" } : undefined}>{m.time}</div>
@@ -98,13 +93,6 @@ export default function ChatClient({ user, messages }: { user: SafeUser; message
                 </div>
               );
             })}
-
-            <div className="card pad row between" style={{ alignSelf: "center", maxWidth: 480, width: "100%", borderColor: "var(--primary)" }}>
-              <div className="small"><b>🔒 Milestone 2 submitted for approval</b><div className="tiny text-3">$4,000 releases after QA verification + your approval</div></div>
-              <Link className="btn btn-primary btn-sm" href="/project">Review</Link>
-            </div>
-
-            <div className="msg"><span className="avatar sm a2">MK</span><div className="bubble typing"><i /><i /><i /></div></div>
           </div>
 
           {error && (
@@ -117,7 +105,7 @@ export default function ChatClient({ user, messages }: { user: SafeUser; message
             <input
               className="input"
               style={{ borderRadius: "var(--r-full)" }}
-              placeholder="Message Maya… (@task to mention a task)"
+              placeholder="Message #general…"
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               disabled={pending}
